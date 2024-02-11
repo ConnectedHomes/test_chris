@@ -1,0 +1,78 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Python application
+
+on:
+  push:
+    branches: [ master, 'epic/**' , 'feature/**', 'hotfix/**' ]
+  pull_request:
+    branches: [ master, 'epic/**' , 'feature/**', 'hotfix/**' ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Check Docker Version
+      run: docker --version
+    - name: Check hostname IP
+      run: |
+        export DOCKER_GATEWAY_HOST="`hostname -I |awk '{print $1}'  `"
+        echo "$DOCKER_GATEWAY_HOST"
+        hostname -I
+        docker network ls
+        sudo apt-get install net-tools
+        HOST_IP=$(route | awk 'FNR==3 {print $2}')
+        HOST_DOMAIN="host.docker.internal"
+        sudo echo -e "$HOST_IP\t$HOST_DOMAIN" | sudo tee -a /etc/hosts
+        echo "127.0.0.1 localhost" | sudo tee --append /etc/hosts
+        hostip=$(ip route show | awk '/default/ {print $3}')
+        echo "hostip"
+        echo $hostip
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+        pip install pylint
+        pip install pytest-pylint
+        pip install moto
+        pip install moto[server]
+        pip install coverage
+        pip install aws-sam-cli
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        docker pull amazon/aws-stepfunctions-local:latest
+    - name: run linting
+      run: |
+        # stop the build if linting is failing
+        # note: this is duplicated for coverage in buildspec.yml
+        py.test --pylint -m pylint --pylint-error-types=EF -v
+    - name: run python tests
+      run: |
+        # need to explicitly include everything wih --source .
+        # it still skips folders with dasherized names.. :( (which is invalid in Python anyway)
+        coverage run --source . -m run_tests.py
+        coverage xml -i -o coverage.xml
+    - name: Code Coverage Report
+      uses: 5monkeys/cobertura-action@v6
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        minimum_coverage: 50
+        show_line: true
+        show_branch: true
+        only_changed_files: false
+        report_name: all_files
+    - name: Code Coverage Report Only Changed Files
+      uses: 5monkeys/cobertura-action@v6
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        minimum_coverage: 50
+        show_line: true
+        show_branch: true
+        only_changed_files: true
+        report_name: only_changed_files

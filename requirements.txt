@@ -1,0 +1,8 @@
+requests
+semver == 3.0.0.dev2
+pytest
+pylint
+pytest-pylint
+coverage
+unittest-xml-reporting
+boto3

@@ -1,0 +1,15 @@
+[MASTER]
+
+disable =
+  import-error,
+  no-member,
+  too-many-arguments,
+  too-many-function-args,
+  missing-function-docstring,
+  missing-module-docstring,
+  logging-fstring-interpolation,
+  pointless-string-statement,
+  bare-except
+
+[FORMAT]
+max-line-length=120

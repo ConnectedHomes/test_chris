@@ -1,0 +1,46 @@
+version: 0.2
+phases:
+  install:
+    commands:
+        - pip install -r requirements.txt
+  build:
+    commands:
+        - export STACK_NAME="dig-web-$STAGE_NAME"
+        - echo "Create S3 bucket if it doesnt already exist"
+        - | # https://stackoverflow.com/a/41961757/1984997
+          if ! aws s3api head-bucket --bucket "$STACK_NAME" 2>/dev/null; then
+            echo "Creating bucket '$STACK_NAME'"
+            aws s3 mb "s3://$STACK_NAME";
+          fi
+        - echo "Create package and upload to s3 bucket"
+        - sam package --template-file template.yaml --s3-bucket $STACK_NAME --output-template-file packaged-template.yaml
+
+        - export SHARED_STACK_NAME="ci-state-machine-codebuild"
+        - SHARED_STACK_ARN="arn:aws:serverlessrepo:eu-west-1:522333424478:applications/$SHARED_STACK_NAME"
+        - |
+          if [ -z "$SHARED_STACK_VERSION" ]; then
+            echo "Fetch latest serverlessrepo semver for $SHARED_STACK_NAME"
+            # https://jmespath.org/specification.html#func-sort-by https://docs.aws.amazon.com/cli/latest/reference/serverlessrepo/list-application-versions.html https://opensourceconnections.com/blog/2015/07/27/advanced-aws-cli-jmespath-query/ (check "chain")
+            # tricky one: need to keep `` inside '' and have the variable replaced.
+            # Using '' inside "" doesnt work
+            query='Versions[?ends_with(SemanticVersion, `'
+            query+=$SHARED_STAGE_NAME
+            query+='`) == `true`]'
+            echo "$query"
+            export SEMANTIC_VERSIONS=$(
+              aws serverlessrepo list-application-versions \
+              --application-id "$SHARED_STACK_ARN" \
+              --query "$query"
+            )
+            SHARED_STACK_VERSION=$(python3 fetch_latest_version.py fetch)
+          fi
+        - echo "SHARED_STACK_VERSION is ${SHARED_STACK_VERSION}"
+        - >
+          sam deploy --stack-name $STACK_NAME
+          --region eu-west-1
+          --s3-bucket $STACK_NAME
+          --template-file packaged-template.yaml
+          --capabilities CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM
+          --parameter-overrides ParameterKey=GithubSlackDynamodbTableName,ParameterValue=digital-people-accounts
+          ParameterKey=StageName,ParameterValue="$STAGE_NAME"
+          ParameterKey=SharedStackVersion,ParameterValue="$SHARED_STACK_VERSION"

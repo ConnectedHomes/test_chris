@@ -1,0 +1,11 @@
+*pycache*
+*.pyc
+*.DS_Store
+*.idea/
+*.vscode/
+*coverage*
+*.aws-sam*
+lambdas_zipped.zip
+lambdas_zipped
+python/*
+packaged-template.yaml

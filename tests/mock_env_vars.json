@@ -1,0 +1,11 @@
+{
+"Parameters": {
+    "AWS::StackName": "digital-shared-mock-apps",
+    "AWS::Partition": "aws",
+    "AWS::AccountId": "123456789012",
+    "AWS::Region": "eu-west-1",
+    "AWS_ACCESS_KEY_ID": "dummy-access-key",
+    "AWS_SECRET_ACCESS_KEY": "dummy-access-key-secret",
+    "AWS_DEFAULT_REGION": "eu-west-1"
+  }
+}

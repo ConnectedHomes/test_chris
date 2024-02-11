@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (c) AWS - Digital Web Apps CI stack with Step Functions
+Transform: 'AWS::Serverless-2016-10-31'
+Parameters:
+  StageName:
+    Description: The short name of the stage being deployed
+    Type: String
+  SharedStackVersion:
+    Description: semver of the shared stack published to https://eu-west-1.console.aws.amazon.com/serverlessrepo/home?region=eu-west-1#/published-applications
+    Type: String
+    Default: 'dummy'
+  SlackChannelName:
+    Description: Ember Apps PR notification Slack Channel Name (#notify-pr-fe)
+    Type: String
+    Default: CCK7B61KP
+  labelsWhitelistString:
+    Description: List of Github Labels on which we want to execute the Github State machine for WebApps
+    Type: String
+    Default: '[\"READY_FOR_MERGE\",\"DEPLOY_TO_QA1\",\"DEPLOY_TO_QA2\",\"DEPLOY_TO_QA3\",\"DEPLOY_TO_Int1\",\"DEPLOY_TO_Int2\",\"DEPLOY_TO_Int3\",\"DEPLOY_TO_Int4\",\"DEPLOY_TO_QA_Tariff\",\"Quality&TestCheck\"]'
+  CommunicationChannel:
+      Description: Communication channel for QA PR notification
+      Type: String
+      Default: Slack
+
+Globals:
+  Function:
+    Runtime: python3.8
+    Timeout: 20
+    PermissionsBoundary: !Sub 'arn:${AWS::Partition}:iam::522333424478:policy/Mode2GenericRoleBoundary'
+    Layers:
+      - arn:aws:lambda:eu-west-1:770693421928:layer:Klayers-python38-requests:24
+
+Resources:
+  SlackMessagesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+  CbStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: 'arn:aws:serverlessrepo:eu-west-1:522333424478:applications/ci-state-machine-codebuild'
+        SemanticVersion: !Ref SharedStackVersion
+      Parameters:
+        BuildParametersArn: !GetAtt buildParameters.Arn
+        GithubTokenSsmKey: dev-github_token
+        SlackMessagesBucketName: !Ref SlackMessagesBucket
+        CreateCbProjectRoleArn: arn:aws:iam::522333424478:role/codebuild-Digital-Web-Step-Functions-Apps-CI-Stack-service-role
+        SlackChannelName: !Ref SlackChannelName
+        CommunicationChannel: !Ref CommunicationChannel
+        TeamsWebhook: notify-pr-fe-teams-webhook
+  CbQAStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: 'arn:aws:serverlessrepo:eu-west-1:522333424478:applications/ci-state-machine-codebuild'
+        SemanticVersion: !Ref SharedStackVersion
+      Parameters:
+        BuildParametersArn: !GetAtt buildQAAutomationCodebuildParameters.Arn
+        GithubTokenSsmKey: dev-github_token
+        SlackMessagesBucketName: !Ref SlackMessagesBucket
+        CreateCbProjectRoleArn: arn:aws:iam::522333424478:role/codebuild-Digital-Web-Step-Functions-Apps-CI-Stack-service-role
+        SlackChannelName: !Ref SlackChannelName
+        CommunicationChannel: !Ref CommunicationChannel
+        TeamsWebhook: notify-pr-fe-teams-webhook
+  GhStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: 'arn:aws:serverlessrepo:eu-west-1:522333424478:applications/ci-state-machine-github'
+        SemanticVersion: !Ref SharedStackVersion
+      Parameters:
+        FirstStateMachineArn: !GetAtt CbStack.Outputs.StateMachineCodebuildArn
+        SecondStateMachineArn: !GetAtt CbQAStack.Outputs.StateMachineCodebuildArn
+        StageName: !Ref StageName
+        GithubTokenSsmKey: dev-github_token
+        SlackMessagesBucketName: !Ref SlackMessagesBucket
+        SlackChannelName: !Ref SlackChannelName
+        ParentStackName: !Ref AWS::StackName
+        labelsWhitelistString: !Ref labelsWhitelistString
+        CommunicationChannel: !Ref CommunicationChannel
+        TeamsWebhook: notify-pr-fe-teams-webhook
+
+  buildParameters:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-buildParameters'
+      Handler: python_lambdas.build_codebuild_parameters.lambda.handler
+      Description: Builds env variables to be used in codebuild jobs
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-github_token'
+                - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-web_oam_engine_names'
+
+  buildQAAutomationCodebuildParameters:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-buildQAAutomationCodebuildParameters'
+      Handler: python_lambdas.build_qa_automation_codebuild_parameters.lambda_handler
+      Description: Builds env variables to be used in codebuild jobs
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-regression_fe_webapp_name'
